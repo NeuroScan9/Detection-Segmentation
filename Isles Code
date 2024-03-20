@@ -438,25 +438,16 @@ for epoch in range(num_epochs):​
 
             val_loss += loss.item() * images.size(0)​
 
-            ​
 
             # Calculate Dice coefficient​
-
             predictions = torch.sigmoid(outputs)​
-
             predictions = (predictions > 0.5).float()​
-
             masks_binary = (masks > 0.5).float()​
-
             dice = f1_score(masks_binary.cpu().numpy().flatten(), predictions.cpu().numpy().flatten(), zero_division=1)​
-
             val_dice += dice * images.size(0)​
 
-​
             # Write validation loss and Dice coefficient to TensorBoard​
-
             writer.add_scalar('Val Loss', loss.item(), epoch * len(val_loader) + batch_idx)​
-
             writer.add_scalar('Val Dice', dice, epoch * len(val_loader) + batch_idx)​
 
     train_loss = train_loss / len(train_dataset)​
