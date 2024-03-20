@@ -48,151 +48,77 @@ mask_transform = transforms.Compose([​
     transforms.ToTensor(),​
 ])​
 class ISLESSegmentationDataset(Dataset):​
-
     def __init__(self, subjects, image_transform=None, mask_transform=None):​
-
         self.subjects = subjects​
-
         self.image_transform = image_transform​
-
         self.mask_transform = mask_transform​
-
-​
     def __len__(self):​
-
         return len(self.subjects)​
-
-​
     def preprocess_image(self, img, slice_idx, output_size=(256, 256)):​
-
         img_slice = img[..., slice_idx]​
-
         if np.max(img_slice) == np.min(img_slice):  # Handle division by zero​
-
             img_normalized = np.zeros(img_slice.shape)​
-
         else:​
-
             img_normalized = (img_slice - np.min(img_slice)) / (np.max(img_slice) - np.min(img_slice))​
-
         img_rescaled = (img_normalized * 255).astype(np.uint8)​
-
         img_pil = Image.fromarray(img_rescaled)​
-
         img_resized = img_pil.resize(output_size)​
-
-​
     def __getitem__(self, idx):​
-
         subject = self.subjects[idx]​
-
         id_ = subject['id']​
-
         dwi = subject['dwi']​
-
         flair = subject['flair']​
-
         adc = subject['adc']​
-
         mask = subject['mask']​
-
-​
         min_slices = min(dwi.shape[-1], flair.shape[-1], adc.shape[-1], mask.shape[-1])​
-
         slice_idx = min_slices // 2​
-
-​
         dwi_slice = self.preprocess_image(dwi, slice_idx)​
-
         flair_slice = self.preprocess_image(flair, slice_idx)​
-
         adc_slice = self.preprocess_image(adc, slice_idx)​
-
         mask_slice = (mask[..., slice_idx] > 0).astype(np.uint8)​
-
         mask_img = Image.fromarray(mask_slice * 255).resize(dwi_slice.size)​
-
-​
         if self.image_transform:​
-
             dwi_slice = self.image_transform(dwi_slice.convert('RGB'))​
-
             flair_slice = self.image_transform(flair_slice.convert('RGB'))​
-
             adc_slice = self.image_transform(adc_slice.convert('RGB'))​
-
         if self.mask_transform:​
-
             mask_img = self.mask_transform(mask_img)​
-
 ​
         # Concatenate slices along the channel dimension​
-
         input_tensor = torch.cat([dwi_slice, flair_slice, adc_slice], dim=0)​
-
-​
         return id_, input_tensor, mask_img​
-
-​
 subjects = load_isles_data(data_dir)​
 
-​
 # Split the subjects into train and validation sets​
-
 train_subjects, val_subjects = train_test_split(subjects, test_size=0.2, random_state=42) ​
-
 ​
 # Create separate datasets for train and validation​
-
 train_dataset = ISLESSegmentationDataset(train_subjects, image_transform=image_transform, mask_transform=mask_transform)​
-
 val_dataset = ISLESSegmentationDataset(val_subjects, image_transform=image_transform, mask_transform=mask_transform)​
 
-​
 # Create data loaders for train and validation sets​
-
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)​
-
 val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True)​
 
-​
 class UNet(nn.Module):​
-
     def __init__(self):​
-
         super(UNet, self).__init__()​
-
-​
         # Encoder​
-
         self.enc1 = nn.Sequential(​
-
             nn.Conv2d(9, 64, 3, padding=1),​
-
             nn.ReLU(inplace=True),​
-
             nn.Conv2d(64, 64, 3, padding=1),​
-
             nn.ReLU(inplace=True)​
-
         )​
 
         self.pool1 = nn.MaxPool2d(2, 2)​
-
         self.enc2 = nn.Sequential(​
-
             nn.Conv2d(64, 128, 3, padding=1),​
-
             nn.ReLU(inplace=True),​
-
             nn.Conv2d(128, 128, 3, padding=1),​
-
             nn.ReLU(inplace=True)​
-
         )​
-
         self.pool2 = nn.MaxPool2d(2, 2)​
-
         self.enc3 = nn.Sequential(​
 
             nn.Conv2d(128, 256, 3, padding=1),​
