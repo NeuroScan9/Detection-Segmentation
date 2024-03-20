@@ -1,0 +1,42 @@
+import tkinter as tk
+from tkinter import filedialog
+from PIL import ImageTk, Image
+
+class MRIApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("MRI Scan Analysis")
+
+        self.load_button = tk.Button(root, text="Load MRI Scan", command=self.load_scan)
+        self.load_button.pack()
+
+        self.image_label = tk.Label(root)
+        self.image_label.pack()
+
+        # Placeholder for displaying analysis results
+        self.result_label = tk.Label(root, text="Analysis Results Here")
+        self.result_label.pack()
+
+    def load_scan(self):
+        file_path = filedialog.askopenfilename(title="Select MRI Scan", filetypes=[("NIFTI files", "*.nii.gz")])
+        # Call your analysis code here using the selected file_path
+        # Update self.result_label with analysis results
+        # Display the resulting image using self.show_image(result_image)
+
+    def show_image(self, image):
+        image = Image.fromarray(image)
+        image = ImageTk.PhotoImage(image)
+        self.image_label.configure(image=image)
+        self.image_label.image = image
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MRIApp(root)
+    root.mainloop()
+
+
+#This is for actual desktop app
+pip install pyinstaller
+
+pyinstaller --onefile abcd.py
+
