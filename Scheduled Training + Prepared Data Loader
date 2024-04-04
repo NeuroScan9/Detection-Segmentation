@@ -1,0 +1,462 @@
+import os
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
+import nibabel as nib
+from PIL import Image
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.metrics import f1_score
+from torch.utils.tensorboard import SummaryWriter
+import torch.nn.functional as F
+import random
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, Dataset
+from torchvision.transforms import ToPILImage
+
+# Path to the ISLES 2022 dataset
+data_dir = "/media/bioeseniordesign/internal/islesdata/dataset_dir/ISLES-2022"
+
+def load_isles_data(data_dir):
+    subjects = []
+    for i in range(1, 251):
+        id_ = f"sub-strokecase{i:04d}"
+        print(f"id: {id_} done.")
+
+        dwi_path = os.path.join(data_dir, f"rawdata/{id_}/ses-0001/dwi/{id_}_ses-0001_dwi.nii.gz")
+        flair_path = os.path.join(data_dir, f"rawdata/{id_}/ses-0001/anat/{id_}_ses-0001_flair_registered.nii.gz")
+        adc_path = os.path.join(data_dir, f"rawdata/{id_}/ses-0001/dwi/{id_}_ses-0001_adc.nii.gz")
+        mask_path = os.path.join(data_dir, f"derivatives/{id_}/ses-0001/{id_}_ses-0001_msk.nii.gz")
+
+        if os.path.exists(dwi_path) and os.path.exists(flair_path) and os.path.exists(adc_path) and os.path.exists(mask_path):
+            dwi = nib.load(dwi_path).get_fdata()
+            flair = nib.load(flair_path).get_fdata()
+            adc = nib.load(adc_path).get_fdata()
+            mask = nib.load(mask_path).get_fdata()
+            subjects.append({'id': id_, 'dwi': dwi, 'flair': flair, 'adc': adc, 'mask': mask})
+        else:
+            print(f"Data for {id_} is incomplete. Skipping...")
+    return subjects
+
+class ISLESSegmentationDataset(Dataset):
+    def __init__(self, subjects, image_transform=None, mask_transform=None):
+        self.subjects = subjects
+        self.image_transform = image_transform
+        self.mask_transform = mask_transform
+
+    def __len__(self):
+        return len(self.subjects)
+
+    def __getitem__(self, idx):
+        subject = self.subjects[idx]
+
+        # Load NIfTI files
+        dwi = nib.load(subject['dwi']).get_fdata()
+        flair = nib.load(subject['flair']).get_fdata()
+        adc = nib.load(subject['adc']).get_fdata()
+        mask = nib.load(subject['mask']).get_fdata()
+
+        # Example: Selecting the middle slice from each modality
+        middle_slice_index = dwi.shape[2] // 2
+        dwi_slice = dwi[:, :, middle_slice_index]
+        flair_slice = flair[:, :, middle_slice_index]
+        adc_slice = adc[:, :, middle_slice_index]
+        mask_slice = mask[:, :, middle_slice_index]
+
+        # Convert arrays to PIL images
+        to_pil = ToPILImage()
+        dwi_slice = to_pil(dwi_slice.astype(np.uint8))
+        flair_slice = to_pil(flair_slice.astype(np.uint8))
+        adc_slice = to_pil(adc_slice.astype(np.uint8))
+        mask_slice = to_pil(mask_slice.astype(np.uint8))
+
+        # Apply transformations
+        if self.image_transform:
+            dwi_slice = self.image_transform(dwi_slice)
+            flair_slice = self.image_transform(flair_slice)
+            adc_slice = self.image_transform(adc_slice)
+        if self.mask_transform:
+            mask_slice = self.mask_transform(mask_slice)
+
+        # Return the transformed data
+        # Assuming you want to stack the different modality images along the channel dimension
+        # and that each transform already includes converting PIL images to tensors
+        image = torch.cat([dwi_slice, flair_slice, adc_slice], dim=0)
+        return image, mask_slice
+    
+def prepare_data_loaders(subjects, batch_size=4, image_transform=None, mask_transform=None):
+    # Use train_test_split to split subjects into training and validation sets
+    train_subjects, val_subjects = train_test_split(subjects, test_size=0.2, random_state=42)
+
+    train_dataset = ISLESSegmentationDataset(train_subjects, image_transform=image_transform, mask_transform=mask_transform)
+    val_dataset = ISLESSegmentationDataset(val_subjects, image_transform=image_transform, mask_transform=mask_transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader
+
+# Load subjects
+subjects = load_isles_data(data_dir)
+
+# Define transformations
+image_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+mask_transform = transforms.Compose([
+    transforms.ToTensor(),
+])
+
+# Prepare Data Loaders
+batch_size = 4
+train_loader, val_loader = prepare_data_loaders(subjects, batch_size=batch_size, image_transform=image_transform, mask_transform=mask_transform)
+
+
+# Create a directory to store TensorBoard logs
+log_dir = "logs"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+# Initialize a SummaryWriter to write TensorBoard logs
+writer = SummaryWriter(log_dir=log_dir)
+
+
+
+# Define transformations for the image and mask separately
+image_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+mask_transform = transforms.Compose([
+    transforms.ToTensor(),
+])
+
+
+# Define a function to apply data augmentation
+#def apply_augmentation(image, mask):
+    # Apply your desired data augmentation techniques here
+    #return augmented_image, augmented_mask
+#trying implementing something here /////////////////////\\\\\\\\\\\\\\\\\\\\\\
+
+# Define a function to perform k-fold cross-validation
+def k_fold_cross_validation(model, criterion, optimizer, num_epochs, k_splits=5):
+    kf = KFold(n_splits=k_splits, shuffle=True)
+    fold = 0
+    for train_index, val_index in kf.split(subjects):
+        fold += 1
+        print(f"Fold {fold}/{k_splits}")
+       
+        # Split data into train and validation sets for this fold
+        train_subjects_fold = [subjects[i] for i in train_index]
+        val_subjects_fold = [subjects[i] for i in val_index]
+
+        train_dataset_fold = ISLESSegmentationDataset(train_subjects_fold, image_transform=image_transform, mask_transform=mask_transform)
+        val_dataset_fold = ISLESSegmentationDataset(val_subjects_fold, image_transform=image_transform, mask_transform=mask_transform)
+
+        train_loader_fold = DataLoader(train_dataset_fold, batch_size=4, shuffle=True)
+        val_loader_fold = DataLoader(val_dataset_fold, batch_size=4, shuffle=False)
+
+        best_val_loss = float('inf')
+        for epoch in range(num_epochs):
+            # Training loop
+            model.train()
+            for batch_idx, (ids, images, masks) in enumerate(train_loader_fold):
+                images = images.to(device)
+                masks = masks.to(device)
+               
+                optimizer.zero_grad()
+                outputs = model(images)
+                loss = criterion(outputs, masks)
+                loss.backward()
+                optimizer.step()
+
+            # Validation loop
+            model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for batch_idx, (ids, images, masks) in enumerate(val_loader_fold):
+                    images = images.to(device)
+                    masks = masks.to(device)
+                    outputs = model(images)
+                    loss = criterion(outputs, masks)
+                    val_loss += loss.item() * images.size(0)
+
+            val_loss = val_loss / len(val_dataset_fold)
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                # Optionally, you can save the best model weights here
+
+            print(f'Fold {fold}/{k_splits}, Epoch [{epoch + 1}/{num_epochs}], Val Loss: {val_loss:.4f}')
+
+# Shuffle the subjects before splitting into train and validation sets
+random.shuffle(subjects) 
+
+# Split the subjects into train and validation sets
+train_subjects, val_subjects = train_test_split(subjects, test_size=0.2, random_state=42)
+
+# Create separate datasets for train and validation
+train_dataset = ISLESSegmentationDataset(train_subjects, image_transform=image_transform, mask_transform=mask_transform)
+val_dataset = ISLESSegmentationDataset(val_subjects, image_transform=image_transform, mask_transform=mask_transform)
+
+
+# Create data loaders for train and validation sets
+train_loader_fold = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
+val_loader_fold = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=False)
+
+# Define the UNet class
+class UNet(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(UNet, self).__init__()
+
+        # Contracting Path (Encoder)
+        self.enc_conv1 = self.create_enc_block(in_channels, 64)
+        self.enc_conv2 = self.create_enc_block(64, 128)
+        self.enc_conv3 = self.create_enc_block(128, 256)
+        self.enc_conv4 = self.create_enc_block(256, 512)
+
+        # Expansive Path (Decoder)
+        self.dec_conv4 = self.create_dec_block(1024 + 512, 512)  # First decoder block gets concatenated features
+        self.dec_conv3 = self.create_dec_block(512 + 256, 256)
+        self.dec_conv2 = self.create_dec_block(256 + 128, 128)
+        self.dec_conv1 = self.create_dec_block(128 + 64, 64)
+
+        # Bottleneck
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(512, 1024, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(1024, 1024, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+
+        # Final Convolution
+        self.final_conv = nn.Conv2d(64, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        # Encoder
+        enc1 = self.enc_conv1(x)
+        enc2 = self.enc_conv2(self.max_pool(enc1))
+        enc3 = self.enc_conv3(self.max_pool(enc2))
+        enc4 = self.enc_conv4(self.max_pool(enc3))
+
+        # Bottleneck
+        bottleneck = self.bottleneck(self.max_pool(enc4))
+
+        # Decoder with correct channels and concatenation
+        dec4 = self.dec_conv4(self.up_and_concat(bottleneck, enc4))
+        dec3 = self.dec_conv3(self.up_and_concat(dec4, enc3))
+        dec2 = self.dec_conv2(self.up_and_concat(dec3, enc2))
+        dec1 = self.dec_conv1(self.up_and_concat(dec2, enc1))
+        return self.final_conv(dec1)
+
+    def max_pool(self, x):
+        return F.max_pool2d(x, kernel_size=2, stride=2)
+
+    def up_and_concat(self, x, bypass):
+        upsampled = F.interpolate(x, size=bypass.shape[2:], mode='bilinear', align_corners=False)
+        return torch.cat([upsampled, bypass], dim=1)
+
+    def create_enc_block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+
+    def create_dec_block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+
+# Define the threshold value
+threshold = 0.2  # You can adjust this value as needed
+
+  
+# Assuming a 9-channel input image (e.g., multiple MRI modalities) and 1-channel output mask
+in_channels = 9  # Number of input channels
+out_channels = 1  # Number of output channels for binary segmentation masks
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = UNet(in_channels=in_channels, out_channels=out_channels).to(device)
+
+    
+class DiceJaccardLoss(nn.Module):
+    def __init__(self):
+        super(DiceJaccardLoss, self).__init__()
+
+    def forward(self, outputs, targets):
+        # Convert outputs to probabilities using sigmoid
+        outputs = torch.sigmoid(outputs)
+
+# Assuming targets and outputs are the same size, but if not:
+        # Resize outputs to match targets if needed
+        if outputs.size() != targets.size():
+            outputs = F.interpolate(outputs, size=targets.size()[2:], mode='bilinear', align_corners=False)
+
+        # Flatten the tensors to compute Dice coefficient
+        outputs_flat = outputs.view(-1)
+        targets_flat = targets.view(-1)
+        # Calculate Dice coefficient
+        intersection = (outputs_flat * targets_flat).sum()
+        dice = (2. * intersection + 1e-6) / (outputs_flat.sum() + targets_flat.sum() + 1e-6)
+   
+        # Calculate Jaccard index
+        union = outputs.sum() + targets.sum() - intersection
+        jaccard = intersection / (union + 1e-6)
+        # Combine Dice and Jaccard losses
+        loss = 1 - dice
+        return loss
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = UNet(in_channels=in_channels, out_channels=out_channels).to(device)
+criterion = DiceJaccardLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+model.to(device)
+criterion.to(device)
+scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
+
+num_epochs = 10
+k_fold_cross_validation(model, criterion, optimizer, num_epochs)
+for epoch in range(num_epochs):
+    model.train()
+    train_loss = 0.0
+    
+    # Iterate over the training set
+    for batch_idx, (ids, images, masks) in enumerate(train_loader): # Define train_loader
+        images = images.to(device)
+        masks = masks.to(device)
+        
+        # Forward pass
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, masks)
+        
+        # Backward pass and optimize
+        loss.backward()
+        optimizer.step()
+        
+        train_loss += loss.item() * images.size(0)
+
+    # Validation phase
+    model.eval()
+    val_loss = 0.0
+    val_dice = 0.0
+    with torch.no_grad():
+        for batch_idx, (ids, images, masks) in enumerate(val_loader): # Define val_loader
+            images = images.to(device)
+            masks = masks.to(device)
+            
+            # Forward pass
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+            val_loss += loss.item() * images.size(0)
+            
+            # Calculate Dice score for each batch
+            predictions = torch.sigmoid(outputs)
+            predictions_binary = (predictions > 0.5).float()
+            dice_score_batch = f1_score(masks.cpu().numpy().flatten(), predictions_binary.cpu().numpy().flatten(), average='binary', zero_division=1)
+            val_dice += dice_score_batch * images.size(0)
+
+    # Calculate average loss and dice score
+    train_loss /= len(train_loader.dataset)
+    val_loss /= len(val_loader.dataset)
+    val_dice /= len(val_loader.dataset)
+
+    # Step the scheduler based on the validation loss
+    scheduler.step(val_loss)
+
+    # Log training and validation metrics
+    writer.add_scalar('Loss/Train', train_loss, epoch)
+    writer.add_scalar('Loss/Val', val_loss, epoch)
+    writer.add_scalar('Dice/Val', val_dice, epoch)
+
+    print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Dice: {val_dice:.4f}')
+
+writer.close()
+print("Training complete.")
+
+# Visualization
+model.eval()  # Set the model to evaluation mode
+
+# Select a random batch from the data loader
+ids, images, masks = next(iter(val_loader_fold))
+images = images.to(device)
+masks = masks.to(device)
+
+#MADE CHANGES 
+
+# Make predictions on the batch
+with torch.no_grad():
+    outputs = model(images)
+    predictions = torch.sigmoid(outputs)
+    predictions_binary = (predictions > threshold).float()  # Apply thresholding
+
+# Move tensors from GPU to CPU and convert to NumPy arrays
+predictions_np = predictions_binary.cpu().numpy().squeeze()
+
+# Check if predicted segmentation contains positive labels
+pred_positive_pixels = np.any(predictions_np > 0)
+if pred_positive_pixels:
+    print("Predicted segmentation contains positive labels.")
+else:
+    print("Predicted segmentation does not contain any positive labels.")
+
+# Extract NumPy arrays for visualization
+images_np = images.cpu().numpy().transpose(0, 2, 3, 1)
+masks_np = masks.cpu().numpy().squeeze()
+
+# Continue with plotting the images
+batch_size = images.shape[0]  # Assuming 'images' is the tensor of images
+
+fig, axes = plt.subplots(nrows=5, ncols=batch_size, figsize=(12, 15))
+
+for i in range(batch_size):  # Assuming batch size of 4
+    # Extract the correct channel for each modality
+    flair_image = images_np[i, :, :, 3]  # First channel for FLAIR
+    adc_image = images_np[i, :, :, 6]   # First channel for ADC
+    dwi_image = images_np[i, :, :, 0]  # First channel for DWI
+    gt_mask = masks_np[i]  # Ground truth mask
+    predicted_mask = predictions_np[i]  # Predicted mask
+    patient_id = ids[i]  # Get the patient ID for the current index
+
+
+    # Extract numeric part of the patient ID and remove leading zeros
+    numeric_id = int(patient_id.strip('sub-strokecase'))  # Convert the numeric part to int to remove leading zeros
+
+    # Plotting FLAIR with numeric patient ID
+    axes[0, i].imshow(flair_image, cmap='gray')
+    axes[0, i].set_title(f"FLAIR - {numeric_id}")
+    axes[0, i].axis('off')
+
+    # Plotting ADC with numeric patient ID
+    axes[1, i].imshow(adc_image, cmap='gray')
+    axes[1, i].set_title(f"ADC - {numeric_id}")
+    axes[1, i].axis('off')
+
+    # Plotting DWI with numeric patient ID
+    axes[2, i].imshow(dwi_image, cmap='gray')
+    axes[2, i].set_title(f"DWI - {numeric_id}")
+    axes[2, i].axis('off')
+
+    # Plotting ground truth mask with numeric patient ID
+    axes[3, i].imshow(dwi_image, cmap='gray')  # Using DWI as background for mask visualization
+    axes[3, i].imshow(gt_mask, cmap='hot', alpha=0.6)
+    axes[3, i].set_title(f"Mask - {numeric_id}")
+    axes[3, i].axis('off')
+
+    # Plotting predicted mask with numeric patient ID
+    axes[4, i].imshow(dwi_image, cmap='gray')  # Using DWI as background for prediction visualization
+    axes[4, i].imshow(predicted_mask, cmap='hot', alpha=0.6)
+    axes[4, i].set_title(f"Prediction - {numeric_id}")
+    axes[4, i].axis('off')
+
+plt.tight_layout()
+plt.show()
