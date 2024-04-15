@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Lesion Detection</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Brain Lesion Detection</h1>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <input type="file" id="imageUpload" accept=".jpg,.jpeg,.png" required>
+            <button type="submit">Upload Image</button>
+        </form>
+        <div id="predictionResult" style="display: none;">
+            <h2>Prediction Result:</h2>
+            <!-- Prediction result will be displayed here -->
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async (event) => {
+            event.preventDefault(); // Prevent default form submission
+            const formData = new FormData();
+            formData.append('file', document.getElementById('imageUpload').files[0]);
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to upload image');
+                }
+
+                const result = await response.json();
+                displayPredictionResult(result);
+            } catch (error) {
+                console.error(error);
+            }
+        });
+
+        function displayPredictionResult(result) {
+            const predictionResult = document.getElementById('predictionResult');
+            predictionResult.style.display = 'block';
+
+            // Assuming the result contains the predictions in JSON format
+            // Modify this part to display the predictions according to your model's output
+            const predictions = result.predictions;
+            const predictionList = document.createElement('ul');
+            predictions.forEach((prediction) => {
+                const listItem = document.createElement('li');
+                listItem.textContent = prediction;
+                predictionList.appendChild(listItem);
+            });
+            predictionResult.appendChild(predictionList);
+        }
+    </script>
+</body>
+</html>
