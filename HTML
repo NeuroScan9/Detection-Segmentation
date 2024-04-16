@@ -1,10 +1,50 @@
-<!DOCTYPE html>
+<<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Brain Lesion Detection</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Your CSS code here */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+        }
+        form {
+            margin-top: 20px;
+        }
+        input[type="file"] {
+            margin-right: 10px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button[type="submit"] {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #predictionResult {
+            margin-top: 20px;
+            display: none;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -13,7 +53,7 @@
             <input type="file" id="imageUpload" accept=".jpg,.jpeg,.png" required>
             <button type="submit">Upload Image</button>
         </form>
-        <div id="predictionResult" style="display: none;">
+        <div id="predictionResult">
             <h2>Prediction Result:</h2>
             <!-- Prediction result will be displayed here -->
         </div>
