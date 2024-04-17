@@ -200,6 +200,7 @@ class DiceJaccardLoss(nn.Module):
         # Calculate Dice coefficient
         intersection = (outputs * targets).sum()
         dice = (2. * intersection) / (outputs.sum() + targets.sum() + 1e-6)
+        print(f"dice")
         # Calculate Jaccard index
         union = outputs.sum() + targets.sum() - intersection
         jaccard = intersection / (union + 1e-6)
@@ -352,7 +353,7 @@ visualize_single_example(images[0], ground_truth_masks[0], predicted_masks[0])
 def visualize_test_predictions(test_loader, model, device):
     model.eval()  # Set model to evaluation mode
     with torch.no_grad():  # Turn off gradients for validation, saves memory and computations
-        for i in range(batch_size):  # Assuming batch size of 4
+        for i in range(batch_size):  
         # Extract the correct channel for each modality
         flair_image = images_np[i, :, :, 3]  # First channel for FLAIR
         adc_image = images_np[i, :, :, 6]   # First channel for ADC
