@@ -272,8 +272,8 @@ def k_fold_cross_validation(model_fn, criterion, optimizer_fn, num_epochs, k_spl
         train_subset = torch.utils.data.Subset(dataset, train_idx)
         val_subset = torch.utils.data.Subset(dataset, val_idx)
         
-        train_loader = DataLoader(train_subset, batch_size=4, shuffle=True)
-        val_loader = DataLoader(val_subset, batch_size=4, shuffle=False)
+        train_loader = DataLoader(train_subset, batch_size=6, shuffle=True)
+        val_loader = DataLoader(val_subset, batch_size=6, shuffle=False)
         
         for epoch in range(num_epochs):
             train_loss = train_one_epoch(model, train_loader, criterion, optimizer)
