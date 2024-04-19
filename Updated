@@ -401,5 +401,5 @@ def visualize_test_predictions(test_loader, model, device):
 # Close the SummaryWriter
 writer.close()
 
-torch.save(model.state_dict(), '/media/bioeseniordesign/internal/islesdata/savedmodel/model_state_dict.pth')
+torch.save(model.state_dict(), '/media/bioeseniordesign/internal/islesdata/savedmodel/trained.pth')
 
