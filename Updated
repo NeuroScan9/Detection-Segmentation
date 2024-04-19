@@ -401,5 +401,5 @@ def visualize_test_predictions(test_loader, model, device):
 # Close the SummaryWriter
 writer.close()
 
-torch.save(model.state_dict(), 'path_to_save_model.pth') #Konner this is the part that you will have to edit when you run it make sure the run gives you different val loss.
-#there should be no consistent numbers
+torch.save(model.state_dict(), '/media/bioeseniordesign/internal/islesdata/savedmodel/model_state_dict.pth')
+
