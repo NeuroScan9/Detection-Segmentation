@@ -1,4 +1,4 @@
-<<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -35,7 +35,6 @@
         }
         #predictionResult {
             margin-top: 20px;
-            display: none;
         }
         ul {
             list-style-type: none;
@@ -44,59 +43,47 @@
         li {
             margin-bottom: 10px;
         }
+        img {
+            margin-top: 20px;
+            max-width: 100%;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Brain Lesion Detection</h1>
         <form id="uploadForm" enctype="multipart/form-data">
-            <input type="file" id="imageUpload" accept=".jpg,.jpeg,.png" required>
-            <button type="submit">Upload Image</button>
+            <input type="file" id="folderUpload" webkitdirectory directory multiple required>
+            <button type="submit">Upload Folder</button>
         </form>
         <div id="predictionResult">
-            <h2>Prediction Result:</h2>
             <!-- Prediction result will be displayed here -->
+            <img src="/prediction_image" alt="Prediction Result">
         </div>
     </div>
 
     <script>
         document.getElementById('uploadForm').addEventListener('submit', async (event) => {
             event.preventDefault(); // Prevent default form submission
-            const formData = new FormData();
-            formData.append('file', document.getElementById('imageUpload').files[0]);
+            const files = document.getElementById('folderUpload').files;
 
             try {
+                const formData = new FormData();
+                for (const file of files) {
+                    formData.append('files[]', file);
+                }
+
                 const response = await fetch('/predict', {
                     method: 'POST',
                     body: formData
                 });
+                const data = await response.json();
+                console.log(data);
 
-                if (!response.ok) {
-                    throw new Error('Failed to upload image');
-                }
-
-                const result = await response.json();
-                displayPredictionResult(result);
             } catch (error) {
-                console.error(error);
+                console.error('Error:', error);
             }
         });
-
-        function displayPredictionResult(result) {
-            const predictionResult = document.getElementById('predictionResult');
-            predictionResult.style.display = 'block';
-
-            // Assuming the result contains the predictions in JSON format
-            // Modify this part to display the predictions according to your model's output
-            const predictions = result.predictions;
-            const predictionList = document.createElement('ul');
-            predictions.forEach((prediction) => {
-                const listItem = document.createElement('li');
-                listItem.textContent = prediction;
-                predictionList.appendChild(listItem);
-            });
-            predictionResult.appendChild(predictionList);
-        }
     </script>
 </body>
 </html>
